@@ -159,7 +159,7 @@
     series.y.push({ t, v: y });
     series.z.push({ t, v: z });
 
-    points3d.push([x, y, z]);
+    points3d.push([x, y, z, t]); // store t for time-based 3D coloring
     if (points3d.length > MAX_3D_POINTS) points3d.shift();
   }
 
@@ -705,8 +705,6 @@
     const cy  = H / 2;
 
     ctx3d.clearRect(0, 0, W, H);
-
-    // Background
     ctx3d.fillStyle = '#1a1d27';
     ctx3d.fillRect(0, 0, W, H);
 
@@ -767,45 +765,87 @@
       return;
     }
 
-    // Draw points, sorted by depth (painter's algorithm)
-    const projected = points3d.map(([x, y, z], i) => {
-      const p = project3d(x, y, z, cx, cy, scale);
-      return { ...p, x, y, z, i };
-    });
-    projected.sort((a, b) => a.depth - b.depth);
+    // Project all points in order
+    const projected = points3d.map(([x, y, z]) => project3d(x, y, z, cx, cy, scale));
+    const n         = projected.length;
 
-    projected.forEach(({ sx, sy, x, y, z, i }) => {
-      // Color each axis independently using HSL blend trick:
-      // We map each point to a color mixing x→red, y→green, z→blue
-      const total = Math.max(Math.abs(x) + Math.abs(y) + Math.abs(z), 0.0001);
-      const rx = Math.abs(x) / total;
-      const ry = Math.abs(y) / total;
-      const rz = Math.abs(z) / total;
+    // Draw trajectory as connected segments, each colored by time position.
+    // Color ramp: old → #3b82f6 (blue) → #a855f7 (purple) → #f97316 (orange) → new #ef4444 (red)
+    function timeColor(frac) {
+      // 4-stop gradient: blue → purple → orange → red
+      const stops = [
+        [59,  130, 246],   // blue    (oldest)
+        [168,  85, 247],   // purple
+        [249, 115,  22],   // orange
+        [239,  68,  68],   // red     (newest)
+      ];
+      const t    = frac * (stops.length - 1);
+      const lo   = Math.floor(t);
+      const hi   = Math.min(lo + 1, stops.length - 1);
+      const mix  = t - lo;
+      const r    = Math.round(stops[lo][0] + (stops[hi][0] - stops[lo][0]) * mix);
+      const g    = Math.round(stops[lo][1] + (stops[hi][1] - stops[lo][1]) * mix);
+      const b    = Math.round(stops[lo][2] + (stops[hi][2] - stops[lo][2]) * mix);
+      return [r, g, b];
+    }
 
-      // Blend: weighted mix of the 3 axis colors
-      const r = Math.round(0xf8 * rx + 0x4a * ry + 0x60 * rz);
-      const g = Math.round(0x71 * rx + 0xde * ry + 0xa5 * rz);
-      const b = Math.round(0x71 * rx + 0x80 * ry + 0xfa * rz);
+    // Draw segments
+    for (let i = 0; i < n - 1; i++) {
+      const frac  = i / Math.max(n - 1, 1);
+      const [r, g, b] = timeColor(frac);
+      const alpha = 0.3 + 0.7 * frac; // older segments more transparent
 
-      const alpha = 0.35 + 0.65 * (i / points3d.length); // fade old points
-
-      ctx3d.fillStyle = `rgba(${r},${g},${b},${alpha})`;
+      ctx3d.strokeStyle = `rgba(${r},${g},${b},${alpha})`;
+      ctx3d.lineWidth   = 1.5;
+      ctx3d.lineJoin    = 'round';
+      ctx3d.lineCap     = 'round';
       ctx3d.beginPath();
-      ctx3d.arc(sx, sy, 2.5, 0, Math.PI * 2);
-      ctx3d.fill();
-    });
+      ctx3d.moveTo(projected[i].sx,     projected[i].sy);
+      ctx3d.lineTo(projected[i + 1].sx, projected[i + 1].sy);
+      ctx3d.stroke();
+    }
 
-    // Live point highlight
+    // Start dot (oldest)
+    if (n >= 1) {
+      const [r, g, b] = timeColor(0);
+      ctx3d.fillStyle = `rgba(${r},${g},${b},0.9)`;
+      ctx3d.beginPath();
+      ctx3d.arc(projected[0].sx, projected[0].sy, 4, 0, Math.PI * 2);
+      ctx3d.fill();
+    }
+
+    // Live endpoint (newest) — always bright white
     if (hasData) {
       const lp = project3d(liveX, liveY, liveZ, cx, cy, scale);
-      ctx3d.strokeStyle = '#fff';
+      ctx3d.fillStyle   = '#ffffffdd';
+      ctx3d.strokeStyle = '#ffffff';
       ctx3d.lineWidth   = 1.5;
-      ctx3d.fillStyle   = '#ffffffcc';
       ctx3d.beginPath();
       ctx3d.arc(lp.sx, lp.sy, 5, 0, Math.PI * 2);
       ctx3d.fill();
       ctx3d.stroke();
     }
+
+    // Time ramp legend (bottom-right corner)
+    const lgX = W - 12, lgY = H - 10;
+    const lgW = 80, lgH = 6;
+    const grad = ctx3d.createLinearGradient(lgX - lgW, lgY - lgH, lgX, lgY - lgH);
+    grad.addColorStop(0,    '#3b82f6');
+    grad.addColorStop(0.33, '#a855f7');
+    grad.addColorStop(0.66, '#f97316');
+    grad.addColorStop(1,    '#ef4444');
+    ctx3d.fillStyle = grad;
+    ctx3d.beginPath();
+    roundRect(ctx3d, lgX - lgW, lgY - lgH, lgW, lgH, 3);
+    ctx3d.fill();
+
+    ctx3d.fillStyle    = '#94a3b8';
+    ctx3d.font         = '9px -apple-system, sans-serif';
+    ctx3d.textBaseline = 'bottom';
+    ctx3d.textAlign    = 'left';
+    ctx3d.fillText('older', lgX - lgW, lgY - lgH - 1);
+    ctx3d.textAlign    = 'right';
+    ctx3d.fillText('newer', lgX, lgY - lgH - 1);
   }
 
   // ── 3D drag (mouse + touch) ───────────────────
