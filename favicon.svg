@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#0f1117"/>
+  <!-- Outer ring -->
+  <circle cx="32" cy="32" r="24" fill="none" stroke="#6366f1" stroke-width="3" opacity="0.5"/>
+  <!-- Tilted orbit ring 1 (X axis color) -->
+  <ellipse cx="32" cy="32" rx="24" ry="9" fill="none" stroke="#f87171" stroke-width="2.5"
+    transform="rotate(-30 32 32)"/>
+  <!-- Tilted orbit ring 2 (Y axis color) -->
+  <ellipse cx="32" cy="32" rx="24" ry="9" fill="none" stroke="#4ade80" stroke-width="2.5"
+    transform="rotate(90 32 32)"/>
+  <!-- Tilted orbit ring 3 (Z axis color) -->
+  <ellipse cx="32" cy="32" rx="24" ry="9" fill="none" stroke="#60a5fa" stroke-width="2.5"
+    transform="rotate(30 32 32)"/>
+  <!-- Center dot -->
+  <circle cx="32" cy="32" r="4" fill="#6366f1"/>
+</svg>
