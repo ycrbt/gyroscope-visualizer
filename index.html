@@ -307,6 +307,11 @@
     <button id="btn-start">▶ Start</button>
     <button id="btn-stop" disabled>■ Stop</button>
     <button id="btn-clear">↺ Clear</button>
+    <select id="sel-sensor" title="Sensor source">
+      <option value="gyroscope">Gyroscope</option>
+      <option value="accelerometer">Accelerometer</option>
+      <option value="orientation">Orientation</option>
+    </select>
     <select id="sel-rate" title="Sampling rate"></select>
   </div>
 
@@ -327,7 +332,7 @@
 
   <div class="charts-grid">
     <div class="chart-card">
-      <h2>Time Series — Angular Velocity (rad/s)</h2>
+      <h2 id="chart-time-title">Time Series — Angular Velocity (rad/s)</h2>
       <canvas id="canvas-time"></canvas>
       <div class="legend">
         <div class="legend-item"><div class="legend-dot" style="background:var(--x-color)"></div> X</div>

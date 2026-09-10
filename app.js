@@ -49,6 +49,7 @@
   const btnStop    = document.getElementById('btn-stop');
   const btnClear   = document.getElementById('btn-clear');
   const selRate    = document.getElementById('sel-rate');
+  const selSensor  = document.getElementById('sel-sensor');
   const statusBadge = document.getElementById('status-badge');
   const valX       = document.getElementById('val-x');
   const valY       = document.getElementById('val-y');
@@ -100,18 +101,25 @@
   let sampleIntervalMs = 50; // default: Normal
   let lastSampleTime   = 0;
 
-  // ── Sensor event handler ──────────────────────
-  /**
-   * DeviceMotion gives rotationRate (alpha/beta/gamma in deg/s)
-   * DeviceOrientation gives absolute angles — less useful for velocity viz
-   * We prefer DeviceMotion.rotationRate; fall back to DeviceOrientation deltas.
-   */
+  // ── Sensor mode ───────────────────────────────
+  // 'gyroscope'     — DeviceMotion.rotationRate          (rad/s)
+  // 'accelerometer' — DeviceMotion.accelerationIncludingGravity (m/s²)
+  // 'orientation'   — DeviceOrientation alpha/beta/gamma  (degrees)
+  let sensorMode = 'gyroscope';
+
+  const SENSOR_META = {
+    gyroscope:     { label: 'Gyroscope',     unit: 'rad/s',  axes: ['α (yaw)', 'β (pitch)', 'γ (roll)'] },
+    accelerometer: { label: 'Accelerometer', unit: 'm/s²',   axes: ['X', 'Y', 'Z'] },
+    orientation:   { label: 'Orientation',   unit: 'deg',    axes: ['α (yaw)', 'β (pitch)', 'γ (roll)'] },
+  };
+
+  // ── Sensor event handlers ─────────────────────
   function onMotion(e) {
     if (!capturing) return;
 
-    const rr = e.rotationRate;
-    if (rr && (rr.alpha !== null || rr.beta !== null || rr.gamma !== null)) {
-      // Convert deg/s → rad/s for display consistency
+    if (sensorMode === 'gyroscope') {
+      const rr = e.rotationRate;
+      if (!rr || (rr.alpha === null && rr.beta === null && rr.gamma === null)) return;
       const toRad = Math.PI / 180;
       liveX = (rr.alpha || 0) * toRad;
       liveY = (rr.beta  || 0) * toRad;
@@ -119,30 +127,25 @@
       hasData = true;
       pushSample(liveX, liveY, liveZ);
     }
+
+    if (sensorMode === 'accelerometer') {
+      const acc = e.accelerationIncludingGravity;
+      if (!acc || (acc.x === null && acc.y === null && acc.z === null)) return;
+      liveX = acc.x || 0;
+      liveY = acc.y || 0;
+      liveZ = acc.z || 0;
+      hasData = true;
+      pushSample(liveX, liveY, liveZ);
+    }
   }
 
-  // Fallback: orientation-based (angular position, not velocity)
-  let prevOrientation = null;
-  let prevOrientationTime = null;
-
   function onOrientation(e) {
-    if (!capturing) return;
-
-    const now = performance.now();
-    if (prevOrientation && prevOrientationTime) {
-      const dt = (now - prevOrientationTime) / 1000; // seconds
-      if (dt > 0) {
-        // Finite-difference velocity estimate
-        const toRad = Math.PI / 180;
-        liveX = ((e.alpha || 0) - prevOrientation.alpha) * toRad / dt;
-        liveY = ((e.beta  || 0) - prevOrientation.beta)  * toRad / dt;
-        liveZ = ((e.gamma || 0) - prevOrientation.gamma) * toRad / dt;
-        hasData = true;
-        pushSample(liveX, liveY, liveZ);
-      }
-    }
-    prevOrientation = { alpha: e.alpha || 0, beta: e.beta || 0, gamma: e.gamma || 0 };
-    prevOrientationTime = now;
+    if (!capturing || sensorMode !== 'orientation') return;
+    liveX = e.alpha || 0;
+    liveY = e.beta  || 0;
+    liveZ = e.gamma || 0;
+    hasData = true;
+    pushSample(liveX, liveY, liveZ);
   }
 
   function pushSample(x, y, z) {
@@ -186,8 +189,6 @@
       window.removeEventListener('deviceorientation', onOrientation);
       orientationAttached = false;
     }
-    prevOrientation = null;
-    prevOrientationTime = null;
   }
 
   // ── iOS 13+ permission flow ───────────────────
@@ -294,8 +295,9 @@
 
     attachSensors();
     setStatus('active', 'Capturing');
-    btnStart.disabled = true;
-    btnStop.disabled  = false;
+    btnStart.disabled  = true;
+    btnStop.disabled   = false;
+    selSensor.disabled = true;
 
     // Start render loop
     if (rafId) cancelAnimationFrame(rafId);
@@ -319,8 +321,9 @@
     capturing = false;
     detachSensors();
     setStatus('', 'Stopped');
-    btnStart.disabled = false;
-    btnStop.disabled  = true;
+    btnStart.disabled  = false;
+    btnStop.disabled   = true;
+    selSensor.disabled = false;
   }
 
   function clearData() {
@@ -870,13 +873,28 @@
     if (e.target === overlay) hideOverlay();
   });
 
-  // ── Button wiring ─────────────────────────────
+  // ── Button & selector wiring ──────────────────
   btnStart.addEventListener('click', startCapture);
   btnStop.addEventListener('click',  stopCapture);
   btnClear.addEventListener('click', clearData);
 
+  // Sensor source selector
+  selSensor.value = sensorMode;
+  selSensor.addEventListener('change', () => {
+    sensorMode = selSensor.value;
+    updateChartTitle();
+    // Clear data when switching — old values are on a different scale/unit
+    clearData();
+  });
+
+  function updateChartTitle() {
+    const meta = SENSOR_META[sensorMode];
+    const el   = document.getElementById('chart-time-title');
+    if (el) el.textContent = `Time Series — ${meta.label} (${meta.unit})`;
+  }
+
   // Populate and wire sample-rate selector
-  SAMPLE_RATES.forEach((rate, i) => {
+  SAMPLE_RATES.forEach((rate) => {
     const opt = document.createElement('option');
     opt.value       = rate.ms;
     opt.textContent = rate.label;
