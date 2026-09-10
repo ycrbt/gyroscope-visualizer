@@ -56,6 +56,7 @@
   const btnStart   = document.getElementById('btn-start');
   const btnStop    = document.getElementById('btn-stop');
   const btnClear    = document.getElementById('btn-clear');
+  const btnExport   = document.getElementById('btn-export');
   const selRate     = document.getElementById('sel-rate');
   const selSensor   = document.getElementById('sel-sensor');
   const scrubberRow = document.getElementById('scrubber-row');
@@ -310,6 +311,7 @@
     lastSampleTime = 0;
     scrubIndex     = null;
     scrubberRow.style.display = 'none';
+    btnExport.disabled = true;
 
     attachSensors();
     setStatus('active', 'Capturing');
@@ -342,6 +344,7 @@
     btnStart.disabled  = false;
     btnStop.disabled   = true;
     selSensor.disabled = false;
+    btnExport.disabled = series.x.length === 0;
     // Show 3D time scrubber now that we have a complete capture
     if (points3d.length > 1) {
       scrubIndex = points3d.length - 1;
@@ -363,6 +366,7 @@
     scrubberRow.style.display = 'none';
     viewOffset = null;
     userZoom   = 1;
+    btnExport.disabled = true;
     valX.textContent = '—';
     valY.textContent = '—';
     valZ.textContent = '—';
@@ -1009,6 +1013,43 @@
     updateScrubberLabel();
     draw3D();
   });
+
+  // ── CSV Export ────────────────────────────────
+  function exportCSV() {
+    if (series.x.length === 0) return;
+
+    const meta     = SENSOR_META[sensorMode];
+    const axes     = meta.axes;
+    const unit     = meta.unit;
+    const captured = new Date().toISOString().replace(/[:.]/g, '-');
+
+    // Header comments + column row
+    const lines = [
+      `# Gyroscope Visualizer — ${meta.label} export`,
+      `# Captured: ${new Date().toISOString()}`,
+      `# Unit: ${unit}`,
+      `time_s,${axes[0].replace(/[\s()]/g,'_')}_${unit},${axes[1].replace(/[\s()]/g,'_')}_${unit},${axes[2].replace(/[\s()]/g,'_')}_${unit}`,
+    ];
+
+    // Data rows — series.x/y/z are guaranteed same length
+    for (let i = 0; i < series.x.length; i++) {
+      lines.push(
+        `${series.x[i].t.toFixed(4)},${series.x[i].v.toFixed(6)},${series.y[i].v.toFixed(6)},${series.z[i].v.toFixed(6)}`
+      );
+    }
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `gyro_${sensorMode}_${captured}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  btnExport.addEventListener('click', exportCSV);
   drawTimeSeries();
   draw3D();
 
