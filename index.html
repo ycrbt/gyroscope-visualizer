@@ -115,6 +115,23 @@
       cursor: not-allowed;
     }
 
+    select {
+      padding: 0.5rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #374151;
+      color: var(--text);
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      -webkit-appearance: none;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%2394a3b8' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 0.6rem center;
+      padding-right: 1.8rem;
+    }
+
     .values-row {
       display: flex;
       gap: 0.6rem;
@@ -285,6 +302,7 @@
     <button id="btn-start">▶ Start</button>
     <button id="btn-stop" disabled>■ Stop</button>
     <button id="btn-clear">↺ Clear</button>
+    <select id="sel-rate" title="Sampling rate"></select>
   </div>
 
   <div class="values-row">

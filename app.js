@@ -40,6 +40,7 @@
   const btnStart   = document.getElementById('btn-start');
   const btnStop    = document.getElementById('btn-stop');
   const btnClear   = document.getElementById('btn-clear');
+  const selRate    = document.getElementById('sel-rate');
   const statusBadge = document.getElementById('status-badge');
   const valX       = document.getElementById('val-x');
   const valY       = document.getElementById('val-y');
@@ -79,6 +80,17 @@
     statusBadge.textContent = label;
     statusBadge.className   = state; // '', 'active', 'error'
   }
+
+  // ── Sampling rate ─────────────────────────────
+  // Device fires events at ~60 Hz. We throttle pushSample to the chosen interval.
+  const SAMPLE_RATES = [
+    { label: 'Fast (60 Hz)',     ms: 17   },
+    { label: 'Normal (20 Hz)',   ms: 50   },
+    { label: 'Slow (5 Hz)',      ms: 200  },
+    { label: 'Very slow (1 Hz)', ms: 1000 },
+  ];
+  let sampleIntervalMs = 50; // default: Normal
+  let lastSampleTime   = 0;
 
   // ── Sensor event handler ──────────────────────
   /**
@@ -126,7 +138,11 @@
   }
 
   function pushSample(x, y, z) {
-    const t = (performance.now() - startTime) / 1000;
+    const now = performance.now();
+    if (now - lastSampleTime < sampleIntervalMs) return;
+    lastSampleTime = now;
+
+    const t = (now - startTime) / 1000;
 
     series.x.push({ t, v: x });
     series.y.push({ t, v: y });
@@ -265,9 +281,10 @@
   }
 
   function doStart() {
-    capturing  = true;
-    startTime  = performance.now();
-    hasData    = false;
+    capturing      = true;
+    startTime      = performance.now();
+    hasData        = false;
+    lastSampleTime = 0;
 
     attachSensors();
     setStatus('active', 'Capturing');
@@ -656,6 +673,18 @@
   btnStart.addEventListener('click', startCapture);
   btnStop.addEventListener('click',  stopCapture);
   btnClear.addEventListener('click', clearData);
+
+  // Populate and wire sample-rate selector
+  SAMPLE_RATES.forEach((rate, i) => {
+    const opt = document.createElement('option');
+    opt.value       = rate.ms;
+    opt.textContent = rate.label;
+    if (rate.ms === sampleIntervalMs) opt.selected = true;
+    selRate.appendChild(opt);
+  });
+  selRate.addEventListener('change', () => {
+    sampleIntervalMs = parseInt(selRate.value, 10);
+  });
 
   // ── Initial render ────────────────────────────
   drawTimeSeries();
