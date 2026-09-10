@@ -8,20 +8,20 @@
   'use strict';
 
   // ── Constants ────────────────────────────────
-  const MAX_POINTS    = 300;   // max samples in time-series window
   const MAX_3D_POINTS = 800;   // max points in 3D cloud
   const COLORS = {
     x: '#f87171',
     y: '#4ade80',
     z: '#60a5fa',
   };
+  const VIEW_WINDOW_SEC = 10; // seconds visible in the time chart at once
 
   // ── State ─────────────────────────────────────
   let capturing   = false;
   let startTime   = null;
   let rafId       = null;
 
-  // Time-series data: arrays of { t, v } objects
+  // Time-series data: arrays of { t, v } — unbounded, full history kept
   const series = { x: [], y: [], z: [] };
 
   // 3-D cloud: array of [x, y, z]
@@ -30,6 +30,14 @@
   // Current live values
   let liveX = 0, liveY = 0, liveZ = 0;
   let hasData = false;
+
+  // ── Time-chart scroll state ───────────────────
+  // viewOffset: left edge of the visible window in seconds.
+  // null = "follow live" mode (auto-tracks the latest data).
+  let viewOffset    = null; // null = live-follow
+  let chartDragging = false;
+  let chartDragStartX   = 0;
+  let chartDragStartOff = 0;
 
   // 3-D camera rotation (drag)
   let rotX = 0.4, rotY = -0.5;
@@ -147,8 +155,6 @@
     series.x.push({ t, v: x });
     series.y.push({ t, v: y });
     series.z.push({ t, v: z });
-
-    if (series.x.length > MAX_POINTS) { series.x.shift(); series.y.shift(); series.z.shift(); }
 
     points3d.push([x, y, z]);
     if (points3d.length > MAX_3D_POINTS) points3d.shift();
@@ -323,7 +329,8 @@
     series.z.length = 0;
     points3d.length = 0;
     liveX = liveY = liveZ = 0;
-    hasData = false;
+    hasData   = false;
+    viewOffset = null;
     valX.textContent = '—';
     valY.textContent = '—';
     valZ.textContent = '—';
@@ -350,22 +357,43 @@
   }
 
   // ── TIME-SERIES CHART ─────────────────────────
+  // Layout: plot area + scrollbar strip at the bottom inside the canvas.
+  const SCROLLBAR_H = 18; // px (CSS pixels)
+
   function drawTimeSeries() {
     const dpr  = window.devicePixelRatio || 1;
     const W    = canvasTime.width  / dpr;
     const H    = canvasTime.height / dpr;
-    const padL = 42, padR = 10, padT = 10, padB = 26;
+    const padL = 42, padR = 10, padT = 10;
+    const padB = 26 + SCROLLBAR_H; // reserve room for x-labels + scrollbar
 
     ctx2d.clearRect(0, 0, W, H);
-
-    // Background
     ctx2d.fillStyle = '#1a1d27';
     ctx2d.fillRect(0, 0, W, H);
 
     const plotW = W - padL - padR;
     const plotH = H - padT - padB;
 
-    // Collect all values to auto-scale
+    // Total recorded duration
+    const totalDur = series.x.length > 0
+      ? series.x[series.x.length - 1].t
+      : VIEW_WINDOW_SEC;
+
+    // Resolve view window
+    // viewOffset === null → live-follow
+    const effTotal  = Math.max(totalDur, VIEW_WINDOW_SEC);
+    const maxOffset = Math.max(0, effTotal - VIEW_WINDOW_SEC);
+
+    let tMin;
+    if (viewOffset === null || viewOffset >= maxOffset) {
+      tMin = maxOffset;
+    } else {
+      tMin = Math.max(0, viewOffset);
+    }
+    const tMax   = tMin + VIEW_WINDOW_SEC;
+    const tRange = VIEW_WINDOW_SEC;
+
+    // Y auto-scale from ALL data (so scale is stable while scrolling)
     let minV = -1, maxV = 1;
     ['x', 'y', 'z'].forEach(axis => {
       series[axis].forEach(p => {
@@ -374,56 +402,38 @@
       });
     });
     const range   = maxV - minV || 2;
-    const padding = range * 0.12;
-    const yMin    = minV - padding;
-    const yMax    = maxV + padding;
+    const vPad    = range * 0.12;
+    const yMin    = minV - vPad;
+    const yMax    = maxV + vPad;
     const yRange  = yMax - yMin;
 
-    // X-axis time window
-    let tMin = 0, tMax = 10;
-    if (series.x.length > 1) {
-      tMax = series.x[series.x.length - 1].t;
-      tMin = Math.max(0, tMax - 10);
-    }
-    const tRange = tMax - tMin || 10;
-
-    // Grid lines
+    // ── Grid ──
     ctx2d.strokeStyle = '#2a2d3a';
     ctx2d.lineWidth   = 0.8;
-    const yTicks = 5;
+    const yTicks = 5, xTicks = 5;
     for (let i = 0; i <= yTicks; i++) {
       const y = padT + (i / yTicks) * plotH;
-      ctx2d.beginPath();
-      ctx2d.moveTo(padL, y);
-      ctx2d.lineTo(padL + plotW, y);
-      ctx2d.stroke();
+      ctx2d.beginPath(); ctx2d.moveTo(padL, y); ctx2d.lineTo(padL + plotW, y); ctx2d.stroke();
     }
-    const xTicks = 5;
     for (let i = 0; i <= xTicks; i++) {
       const x = padL + (i / xTicks) * plotW;
-      ctx2d.beginPath();
-      ctx2d.moveTo(x, padT);
-      ctx2d.lineTo(x, padT + plotH);
-      ctx2d.stroke();
+      ctx2d.beginPath(); ctx2d.moveTo(x, padT); ctx2d.lineTo(x, padT + plotH); ctx2d.stroke();
     }
 
     // Zero line
     if (yMin < 0 && yMax > 0) {
-      const zy = padT + (1 - (-yMin / yRange)) * plotH;
+      const zy = padT + (1 - (0 - yMin) / yRange) * plotH;
       ctx2d.strokeStyle = '#3f4255';
       ctx2d.lineWidth   = 1;
       ctx2d.setLineDash([4, 3]);
-      ctx2d.beginPath();
-      ctx2d.moveTo(padL, zy);
-      ctx2d.lineTo(padL + plotW, zy);
-      ctx2d.stroke();
+      ctx2d.beginPath(); ctx2d.moveTo(padL, zy); ctx2d.lineTo(padL + plotW, zy); ctx2d.stroke();
       ctx2d.setLineDash([]);
     }
 
-    // Axis labels (Y)
-    ctx2d.fillStyle   = '#64748b';
-    ctx2d.font        = '10px -apple-system, sans-serif';
-    ctx2d.textAlign   = 'right';
+    // ── Y labels ──
+    ctx2d.fillStyle    = '#64748b';
+    ctx2d.font         = '10px -apple-system, sans-serif';
+    ctx2d.textAlign    = 'right';
     ctx2d.textBaseline = 'middle';
     for (let i = 0; i <= yTicks; i++) {
       const v = yMax - (i / yTicks) * yRange;
@@ -431,8 +441,8 @@
       ctx2d.fillText(v.toFixed(1), padL - 4, y);
     }
 
-    // Axis labels (X)
-    ctx2d.textAlign   = 'center';
+    // ── X labels ──
+    ctx2d.textAlign    = 'center';
     ctx2d.textBaseline = 'top';
     for (let i = 0; i <= xTicks; i++) {
       const t = tMin + (i / xTicks) * tRange;
@@ -440,37 +450,228 @@
       ctx2d.fillText(t.toFixed(1) + 's', x, padT + plotH + 4);
     }
 
-    // Series lines
+    // ── Series lines (clip to plot area) ──
+    ctx2d.save();
+    ctx2d.beginPath();
+    ctx2d.rect(padL, padT, plotW, plotH);
+    ctx2d.clip();
+
     const axes = [
       { key: 'x', color: COLORS.x },
       { key: 'y', color: COLORS.y },
       { key: 'z', color: COLORS.z },
     ];
-
     axes.forEach(({ key, color }) => {
-      const pts = series[key].filter(p => p.t >= tMin && p.t <= tMax + 0.1);
+      const pts = series[key].filter(p => p.t >= tMin - 0.1 && p.t <= tMax + 0.1);
       if (pts.length < 2) return;
-
       ctx2d.strokeStyle = color;
       ctx2d.lineWidth   = 1.8;
       ctx2d.lineJoin    = 'round';
       ctx2d.lineCap     = 'round';
       ctx2d.beginPath();
-
       pts.forEach((p, i) => {
         const px = padL + ((p.t - tMin) / tRange) * plotW;
         const py = padT + (1 - (p.v - yMin) / yRange) * plotH;
-        if (i === 0) ctx2d.moveTo(px, py);
-        else         ctx2d.lineTo(px, py);
+        if (i === 0) ctx2d.moveTo(px, py); else ctx2d.lineTo(px, py);
       });
       ctx2d.stroke();
     });
+    ctx2d.restore();
 
-    // Clip to plot area (border)
+    // ── Plot border ──
     ctx2d.strokeStyle = '#2a2d3a';
     ctx2d.lineWidth   = 1;
     ctx2d.strokeRect(padL, padT, plotW, plotH);
+
+    // ── Scrollbar ──
+    const sbY = H - SCROLLBAR_H + 2;
+    const sbH = SCROLLBAR_H - 4;
+    const sbX = padL;
+    const sbW = plotW;
+
+    // Track
+    ctx2d.fillStyle   = '#12141c';
+    ctx2d.beginPath();
+    roundRect(ctx2d, sbX, sbY, sbW, sbH, 4);
+    ctx2d.fill();
+
+    // Only draw thumb if there's something to scroll
+    if (effTotal > VIEW_WINDOW_SEC) {
+      const thumbW   = Math.max(28, sbW * (VIEW_WINDOW_SEC / effTotal));
+      const thumbMax = sbW - thumbW;
+      const thumbX   = sbX + thumbMax * (tMin / maxOffset);
+
+      // Thumb
+      const isLive = viewOffset === null || viewOffset >= maxOffset;
+      ctx2d.fillStyle = isLive ? '#6366f1' : '#475569';
+      ctx2d.beginPath();
+      roundRect(ctx2d, thumbX, sbY, thumbW, sbH, 4);
+      ctx2d.fill();
+
+      // "LIVE" badge on thumb when auto-following
+      if (isLive) {
+        ctx2d.fillStyle    = '#fff';
+        ctx2d.font         = `bold 8px -apple-system, sans-serif`;
+        ctx2d.textAlign    = 'center';
+        ctx2d.textBaseline = 'middle';
+        ctx2d.fillText('LIVE', thumbX + thumbW / 2, sbY + sbH / 2);
+      }
+    } else {
+      // Not enough data yet — grey bar
+      ctx2d.fillStyle = '#2a2d3a';
+      ctx2d.beginPath();
+      roundRect(ctx2d, sbX, sbY, sbW, sbH, 4);
+      ctx2d.fill();
+    }
   }
+
+  // Helper: rounded rect path (no native roundRect on older WebKit)
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+
+  // ── Chart scroll interaction ──────────────────
+  // Returns { tMin, tMax, maxOffset, effTotal, plotW, padL, sbY, sbH, sbX, sbW }
+  // for hit-testing and dragging.
+  function chartLayout() {
+    const dpr   = window.devicePixelRatio || 1;
+    const W     = canvasTime.width  / dpr;
+    const H     = canvasTime.height / dpr;
+    const padL  = 42, padR = 10, padT = 10;
+    const padB  = 26 + SCROLLBAR_H;
+    const plotW = W - padL - padR;
+    const plotH = H - padT - padB;
+    const totalDur  = series.x.length > 0 ? series.x[series.x.length - 1].t : VIEW_WINDOW_SEC;
+    const effTotal  = Math.max(totalDur, VIEW_WINDOW_SEC);
+    const maxOffset = Math.max(0, effTotal - VIEW_WINDOW_SEC);
+    const tMin = viewOffset === null || viewOffset >= maxOffset ? maxOffset : Math.max(0, viewOffset);
+    const sbY  = H - SCROLLBAR_H + 2;
+    const sbH  = SCROLLBAR_H - 4;
+    return { W, H, padL, padR, padT, padB, plotW, plotH, effTotal, maxOffset, tMin, sbY, sbH, sbX: padL, sbW: plotW };
+  }
+
+  function offsetFromClientX(clientX, layout) {
+    const rect = canvasTime.getBoundingClientRect();
+    const x    = clientX - rect.left;
+    const { sbX, sbW, effTotal, maxOffset } = layout;
+    const thumbW = Math.max(28, sbW * (VIEW_WINDOW_SEC / effTotal));
+    const thumbMax = sbW - thumbW;
+    // Map click/drag position to offset, centering thumb on cursor
+    const frac = Math.max(0, Math.min(1, (x - sbX - thumbW / 2) / thumbMax));
+    return frac * maxOffset;
+  }
+
+  function isInScrollbar(clientX, clientY, layout) {
+    const rect = canvasTime.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    const { sbX, sbW, sbY, sbH } = layout;
+    return x >= sbX && x <= sbX + sbW && y >= sbY && y <= sbY + sbH;
+  }
+
+  function isInPlot(clientX, clientY, layout) {
+    const rect = canvasTime.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    const { padL, padT, plotW, plotH } = layout;
+    return x >= padL && x <= padL + plotW && y >= padT && y <= padT + plotH;
+  }
+
+  function applyScroll(delta) {
+    const layout = chartLayout();
+    const { maxOffset } = layout;
+    if (maxOffset <= 0) return;
+    const current = viewOffset === null ? maxOffset : viewOffset;
+    const next    = Math.max(0, Math.min(maxOffset, current + delta));
+    viewOffset    = next >= maxOffset ? null : next;
+    if (!capturing) drawTimeSeries();
+  }
+
+  // Mouse drag on scrollbar or plot area
+  canvasTime.addEventListener('mousedown', e => {
+    const layout = chartLayout();
+    if (isInScrollbar(e.clientX, e.clientY, layout) || isInPlot(e.clientX, e.clientY, layout)) {
+      chartDragging     = true;
+      chartDragStartX   = e.clientX;
+      chartDragStartOff = viewOffset === null ? layout.maxOffset : viewOffset;
+      if (isInScrollbar(e.clientX, e.clientY, layout)) {
+        // Jump thumb to click position
+        viewOffset = offsetFromClientX(e.clientX, layout);
+        if (!capturing) drawTimeSeries();
+      }
+      e.preventDefault();
+    }
+  });
+
+  window.addEventListener('mousemove', e => {
+    if (!chartDragging) return;
+    const layout  = chartLayout();
+    const { sbW, effTotal, maxOffset } = layout;
+    const dxPx    = e.clientX - chartDragStartX;
+    // How many seconds does 1 px correspond to?
+    const secPerPx = effTotal / sbW;
+    const next     = Math.max(0, Math.min(maxOffset, chartDragStartOff + dxPx * secPerPx));
+    viewOffset     = next >= maxOffset ? null : next;
+    if (!capturing) drawTimeSeries();
+  });
+
+  window.addEventListener('mouseup', () => { chartDragging = false; });
+
+  // Touch drag on the time chart
+  let chartTouchId    = null;
+  let chartTouchStartX   = 0;
+  let chartTouchStartOff = 0;
+
+  canvasTime.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1) return;
+    const t      = e.touches[0];
+    const layout = chartLayout();
+    if (isInScrollbar(t.clientX, t.clientY, layout) || isInPlot(t.clientX, t.clientY, layout)) {
+      chartTouchId      = e.touches[0].identifier;
+      chartTouchStartX  = t.clientX;
+      chartTouchStartOff = viewOffset === null ? layout.maxOffset : viewOffset;
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  canvasTime.addEventListener('touchmove', e => {
+    if (chartTouchId === null) return;
+    let touch = null;
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      if (e.changedTouches[i].identifier === chartTouchId) { touch = e.changedTouches[i]; break; }
+    }
+    if (!touch) return;
+    e.preventDefault();
+    const layout  = chartLayout();
+    const { sbW, effTotal, maxOffset } = layout;
+    // Invert drag direction for plot area (drag left = scroll right = later time)
+    const dxPx    = touch.clientX - chartTouchStartX;
+    const secPerPx = effTotal / sbW;
+    const next     = Math.max(0, Math.min(maxOffset, chartTouchStartOff - dxPx * secPerPx));
+    viewOffset     = next >= maxOffset ? null : next;
+    if (!capturing) drawTimeSeries();
+  }, { passive: false });
+
+  canvasTime.addEventListener('touchend',   () => { chartTouchId = null; });
+  canvasTime.addEventListener('touchcancel',() => { chartTouchId = null; });
+
+  // Mouse wheel scroll
+  canvasTime.addEventListener('wheel', e => {
+    e.preventDefault();
+    const layout = chartLayout();
+    const { effTotal, sbW } = layout;
+    const secPerPx  = effTotal / sbW;
+    applyScroll(e.deltaY * secPerPx * 0.5);
+  }, { passive: false });
 
   // ── 3-D POINT CLOUD ───────────────────────────
   // Simple isometric-style projection with drag rotation
