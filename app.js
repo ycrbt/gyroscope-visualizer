@@ -39,6 +39,9 @@
   let chartDragStartX   = 0;
   let chartDragStartOff = 0;
 
+  // 3-D scrubber: null = show all points, otherwise index cutoff
+  let scrubIndex = null;
+
   // 3-D camera rotation (drag)
   let rotX = 0.4, rotY = -0.5;
   let dragActive = false;
@@ -47,9 +50,12 @@
   // ── DOM refs ──────────────────────────────────
   const btnStart   = document.getElementById('btn-start');
   const btnStop    = document.getElementById('btn-stop');
-  const btnClear   = document.getElementById('btn-clear');
-  const selRate    = document.getElementById('sel-rate');
-  const selSensor  = document.getElementById('sel-sensor');
+  const btnClear    = document.getElementById('btn-clear');
+  const selRate     = document.getElementById('sel-rate');
+  const selSensor   = document.getElementById('sel-sensor');
+  const scrubberRow = document.getElementById('scrubber-row');
+  const scrubber    = document.getElementById('scrubber');
+  const scrubberTime = document.getElementById('scrubber-time');
   const statusBadge = document.getElementById('status-badge');
   const valX       = document.getElementById('val-x');
   const valY       = document.getElementById('val-y');
@@ -291,6 +297,8 @@
     startTime      = performance.now();
     hasData        = false;
     lastSampleTime = 0;
+    scrubIndex     = null;
+    scrubberRow.style.display = 'none';
 
     attachSensors();
     setStatus('active', 'Capturing');
@@ -323,6 +331,14 @@
     btnStart.disabled  = false;
     btnStop.disabled   = true;
     selSensor.disabled = false;
+    // Show 3D time scrubber now that we have a complete capture
+    if (points3d.length > 1) {
+      scrubIndex = points3d.length - 1;
+      scrubber.max   = points3d.length - 1;
+      scrubber.value = points3d.length - 1;
+      updateScrubberLabel();
+      scrubberRow.style.display = 'flex';
+    }
   }
 
   function clearData() {
@@ -332,6 +348,8 @@
     points3d.length = 0;
     liveX = liveY = liveZ = 0;
     hasData   = false;
+    scrubIndex = null;
+    scrubberRow.style.display = 'none';
     viewOffset = null;
     valX.textContent = '—';
     valY.textContent = '—';
@@ -765,8 +783,12 @@
       return;
     }
 
+    // Slice to scrubIndex when scrubbing historical data
+    const cutoff = (scrubIndex !== null) ? scrubIndex + 1 : points3d.length;
+    const pts    = points3d.slice(0, cutoff);
+
     // Project all points in order
-    const projected = points3d.map(([x, y, z]) => project3d(x, y, z, cx, cy, scale));
+    const projected = pts.map(([x, y, z]) => project3d(x, y, z, cx, cy, scale));
     const n         = projected.length;
 
     // Draw trajectory as connected segments, each colored by time position.
@@ -814,14 +836,15 @@
       ctx3d.fill();
     }
 
-    // Live endpoint (newest) — always bright white
-    if (hasData) {
-      const lp = project3d(liveX, liveY, liveZ, cx, cy, scale);
-      ctx3d.fillStyle   = '#ffffffdd';
-      ctx3d.strokeStyle = '#ffffff';
+    // End dot — white when live, accent color when scrubbing
+    if (n >= 1) {
+      const last = projected[n - 1];
+      const isLive = scrubIndex === null && hasData;
+      ctx3d.fillStyle   = isLive ? '#ffffffdd' : '#6366f1cc';
+      ctx3d.strokeStyle = isLive ? '#ffffff'   : '#6366f1';
       ctx3d.lineWidth   = 1.5;
       ctx3d.beginPath();
-      ctx3d.arc(lp.sx, lp.sy, 5, 0, Math.PI * 2);
+      ctx3d.arc(last.sx, last.sy, isLive ? 5 : 4, 0, Math.PI * 2);
       ctx3d.fill();
       ctx3d.stroke();
     }
@@ -944,7 +967,18 @@
     sampleIntervalMs = parseInt(selRate.value, 10);
   });
 
-  // ── Initial render ────────────────────────────
+  function updateScrubberLabel() {
+    if (scrubIndex !== null && points3d[scrubIndex]) {
+      const t = points3d[scrubIndex][3]; // stored timestamp
+      scrubberTime.textContent = t !== undefined ? t.toFixed(1) + 's' : scrubIndex;
+    }
+  }
+
+  scrubber.addEventListener('input', () => {
+    scrubIndex = parseInt(scrubber.value, 10);
+    updateScrubberLabel();
+    draw3D();
+  });
   drawTimeSeries();
   draw3D();
 

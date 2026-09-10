@@ -219,26 +219,67 @@
       cursor: grabbing;
     }
 
-    .legend {
-      display: flex;
-      gap: 1rem;
-      margin-top: 0.6rem;
-      flex-wrap: wrap;
-    }
-
-    .legend-item {
+    .legend-bar {
       display: flex;
       align-items: center;
-      gap: 0.35rem;
-      font-size: 0.76rem;
-      color: var(--text-muted);
+      gap: 0.5rem;
+      margin-top: 0.6rem;
     }
 
-    .legend-dot {
-      width: 8px;
-      height: 8px;
+    .legend-bar-grad {
+      flex: 1;
+      height: 6px;
+      border-radius: 3px;
+      background: linear-gradient(to right, #3b82f6, #a855f7, #f97316, #ef4444);
+    }
+
+    .legend-bar-label {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    #scrubber-row {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-top: 0.6rem;
+    }
+
+    .scrubber-label {
+      font-size: 0.75rem;
+      font-variant-numeric: tabular-nums;
+      color: var(--text-muted);
+      min-width: 36px;
+    }
+
+    #scrubber {
+      flex: 1;
+      -webkit-appearance: none;
+      appearance: none;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--border);
+      outline: none;
+      cursor: pointer;
+    }
+
+    #scrubber::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
       border-radius: 50%;
-      flex-shrink: 0;
+      background: var(--accent);
+      cursor: pointer;
+    }
+
+    #scrubber::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: none;
+      cursor: pointer;
     }
 
     #message-overlay {
@@ -334,21 +375,23 @@
     <div class="chart-card">
       <h2 id="chart-time-title">Time Series — Angular Velocity (rad/s)</h2>
       <canvas id="canvas-time"></canvas>
-      <div class="legend">
-        <div class="legend-item"><div class="legend-dot" style="background:var(--x-color)"></div> X</div>
-        <div class="legend-item"><div class="legend-dot" style="background:var(--y-color)"></div> Y</div>
-        <div class="legend-item"><div class="legend-dot" style="background:var(--z-color)"></div> Z</div>
+      <div class="legend-bar" style="gap:1rem; flex-wrap:wrap;">
+        <span class="legend-bar-label" style="display:flex;align-items:center;gap:0.35rem;"><span style="width:10px;height:3px;border-radius:2px;background:var(--x-color);display:inline-block"></span> X</span>
+        <span class="legend-bar-label" style="display:flex;align-items:center;gap:0.35rem;"><span style="width:10px;height:3px;border-radius:2px;background:var(--y-color);display:inline-block"></span> Y</span>
+        <span class="legend-bar-label" style="display:flex;align-items:center;gap:0.35rem;"><span style="width:10px;height:3px;border-radius:2px;background:var(--z-color);display:inline-block"></span> Z</span>
       </div>
     </div>
     <div class="chart-card">
       <h2>3D Trajectory — Drag to rotate</h2>
       <canvas id="canvas-3d"></canvas>
-      <div class="legend">
-        <div class="legend-item"><div class="legend-dot" style="background:#3b82f6"></div> Older</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#a855f7"></div> ···</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#f97316"></div> ···</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div> Newer</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#ffffff"></div> Live</div>
+      <div class="legend-bar">
+        <span class="legend-bar-label">Older</span>
+        <div class="legend-bar-grad"></div>
+        <span class="legend-bar-label">Newer</span>
+      </div>
+      <div id="scrubber-row" style="display:none;">
+        <span class="scrubber-label" id="scrubber-time">0.0s</span>
+        <input type="range" id="scrubber" min="0" max="1000" value="1000" step="1" />
       </div>
     </div>
   </div>
