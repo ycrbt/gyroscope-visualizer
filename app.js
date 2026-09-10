@@ -314,7 +314,6 @@
     btnExport.disabled = true;
 
     attachSensors();
-    attachPhoneOrientation();
     setStatus('active', 'Capturing');
     btnStart.disabled  = true;
     btnStop.disabled   = false;
@@ -341,8 +340,6 @@
     if (!capturing) return;
     capturing = false;
     detachSensors();
-    detachPhoneOrientation();
-    orientHint.classList.remove('hidden');
     setStatus('', 'Stopped');
     btnStart.disabled  = false;
     btnStop.disabled   = true;
@@ -381,56 +378,9 @@
   }
 
   // ── Render loop ───────────────────────────────
-  // ── Phone orientation display ─────────────────
-  // Always tracks raw DeviceOrientation regardless of selected sensor mode.
-  const phoneWrap  = document.getElementById('phone-wrap');
-  const oAlpha     = document.getElementById('o-alpha');
-  const oBeta      = document.getElementById('o-beta');
-  const oGamma     = document.getElementById('o-gamma');
-  const orientHint = document.getElementById('orient-hint');
-
-  let rawAlpha = 0, rawBeta = 0, rawGamma = 0;
-  let phoneOrientAttached = false;
-
-  function onPhoneOrientation(e) {
-    rawAlpha = e.alpha || 0;
-    rawBeta  = e.beta  || 0;
-    rawGamma = e.gamma || 0;
-  }
-
-  function attachPhoneOrientation() {
-    if (phoneOrientAttached) return;
-    if ('DeviceOrientationEvent' in window) {
-      window.addEventListener('deviceorientation', onPhoneOrientation, { passive: true });
-      phoneOrientAttached = true;
-    }
-  }
-
-  function detachPhoneOrientation() {
-    if (!phoneOrientAttached) return;
-    window.removeEventListener('deviceorientation', onPhoneOrientation);
-    phoneOrientAttached = false;
-  }
-
-  function updatePhoneVisual() {
-    if (!capturing) return;
-    // beta  = front/back tilt  (-180 to 180) → rotateX
-    // gamma = left/right tilt  (-90 to 90)   → rotateZ (inverted)
-    // alpha = compass rotation (0 to 360)     → rotateY
-    phoneWrap.style.transform =
-      `rotateX(${rawBeta.toFixed(1)}deg) rotateZ(${(-rawGamma).toFixed(1)}deg) rotateY(${rawAlpha.toFixed(1)}deg)`;
-
-    oAlpha.textContent = rawAlpha.toFixed(1) + '°';
-    oBeta.textContent  = rawBeta.toFixed(1)  + '°';
-    oGamma.textContent = rawGamma.toFixed(1) + '°';
-
-    orientHint.classList.add('hidden');
-  }
-
   function loop() {
     if (!capturing) return;
     updateLiveValues();
-    updatePhoneVisual();
     drawTimeSeries();
     draw3D();
     rafId = requestAnimationFrame(loop);
