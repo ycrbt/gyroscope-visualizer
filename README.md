@@ -4,8 +4,6 @@ A real-time mobile sensor visualizer that runs entirely in the browser — no ap
 
 **[→ Open the app](https://gyroscope-visualizer.pages.dev)**
 
-![Screenshot](https://gyroscope-visualizer.pages.dev/og.png)
-
 ---
 
 ## Features
@@ -105,7 +103,6 @@ time_s,α_(yaw)_rad/s,β_(pitch)_rad/s,γ_(roll)_rad/s
 | Safari | ✅ | — |
 | Chrome | ✅ (WebKit) | ✅ |
 | Firefox | ✅ | ✅ |
-| Samsung Internet | — | ✅ |
 
 ---
 
