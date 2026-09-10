@@ -42,6 +42,11 @@
   // 3-D scrubber: null = show all points, otherwise index cutoff
   let scrubIndex = null;
 
+  // 3-D zoom (1 = auto-fit, >1 = zoomed in, <1 = zoomed out)
+  let userZoom     = 1;
+  const ZOOM_MIN   = 0.2;
+  const ZOOM_MAX   = 10;
+
   // 3-D camera rotation (drag)
   let rotX = 0.4, rotY = -0.5;
   let dragActive = false;
@@ -357,6 +362,7 @@
     scrubIndex = null;
     scrubberRow.style.display = 'none';
     viewOffset = null;
+    userZoom   = 1;
     valX.textContent = '—';
     valY.textContent = '—';
     valZ.textContent = '—';
@@ -737,10 +743,10 @@
     points3d.forEach(([x, y, z]) => {
       maxAbs = Math.max(maxAbs, Math.abs(x), Math.abs(y), Math.abs(z));
     });
-    const scale = (Math.min(W, H) * 0.38) / maxAbs;
+    const scale = (Math.min(W, H) * 0.38) / maxAbs * userZoom;
 
-    // Reference axes
-    const axisLen = Math.min(W, H) * 0.38;
+    // Reference axes — length stays fixed in screen space regardless of zoom
+    const axisLen = Math.min(W, H) * 0.38 * userZoom;
     const axes3 = [
       { dir: [1,0,0], color: COLORS.x, label: 'X' },
       { dir: [0,1,0], color: COLORS.y, label: 'Y' },
@@ -897,6 +903,44 @@
 
   canvas3d.addEventListener('touchend',   endDrag);
   canvas3d.addEventListener('touchcancel', endDrag);
+
+  // ── 3D zoom — mouse wheel ─────────────────────
+  canvas3d.addEventListener('wheel', e => {
+    e.preventDefault();
+    const factor = e.deltaY > 0 ? 0.92 : 1.08;
+    userZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, userZoom * factor));
+    if (!capturing) draw3D();
+  }, { passive: false });
+
+  // ── 3D zoom — pinch to zoom (touch) ──────────
+  let pinchStartDist = null;
+  let pinchStartZoom = 1;
+
+  canvas3d.addEventListener('touchstart', e => {
+    if (e.touches.length === 2) {
+      endDrag(); // cancel any ongoing drag
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      pinchStartDist = Math.hypot(dx, dy);
+      pinchStartZoom = userZoom;
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  canvas3d.addEventListener('touchmove', e => {
+    if (e.touches.length === 2 && pinchStartDist !== null) {
+      e.preventDefault();
+      const dx   = e.touches[0].clientX - e.touches[1].clientX;
+      const dy   = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      userZoom   = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, pinchStartZoom * (dist / pinchStartDist)));
+      if (!capturing) draw3D();
+    }
+  }, { passive: false });
+
+  canvas3d.addEventListener('touchend', e => {
+    if (e.touches.length < 2) pinchStartDist = null;
+  });
 
   // ── Overlay helpers ───────────────────────────
   function showOverlay(icon, title, body, btnLabel, onConfirm) {
