@@ -109,7 +109,8 @@
 
   // ── Sensor mode ───────────────────────────────
   // 'gyroscope'     — DeviceMotion.rotationRate          (rad/s)
-  // 'accelerometer' — DeviceMotion.accelerationIncludingGravity (m/s²)
+  // 'accelerometer' — DeviceMotion.acceleration (gravity removed) with
+  //                   fallback to accelerationIncludingGravity (m/s²)
   // 'orientation'   — DeviceOrientation alpha/beta/gamma  (degrees)
   let sensorMode = 'gyroscope';
 
@@ -135,7 +136,12 @@
     }
 
     if (sensorMode === 'accelerometer') {
-      const acc = e.accelerationIncludingGravity;
+      // Prefer acceleration (gravity removed by device) → ≈0 when still.
+      // Fall back to accelerationIncludingGravity on devices that don't
+      // provide the gravity-free version (some Android devices).
+      const acc = (e.acceleration && e.acceleration.x !== null)
+        ? e.acceleration
+        : e.accelerationIncludingGravity;
       if (!acc || (acc.x === null && acc.y === null && acc.z === null)) return;
       liveX = acc.x || 0;
       liveY = acc.y || 0;
