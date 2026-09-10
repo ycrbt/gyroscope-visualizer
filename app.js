@@ -193,24 +193,24 @@
 
   // ── iOS 13+ permission flow ───────────────────
   // Both DeviceMotionEvent AND DeviceOrientationEvent need permission on iOS 13+.
-  // We request DeviceMotionEvent first (it covers the gyroscope / rotationRate),
-  // then DeviceOrientationEvent for the orientation fallback.
+  // We cache the result so subsequent Start presses skip the prompt entirely.
+  let iosPermissionGranted = false;
+
   function needsIosPermission() {
     return (
+      !iosPermissionGranted &&
       typeof DeviceMotionEvent !== 'undefined' &&
       typeof DeviceMotionEvent.requestPermission === 'function'
     );
   }
 
   function requestIosPermissions(callback) {
-    // Request DeviceMotionEvent permission first
     DeviceMotionEvent.requestPermission()
       .then(motionState => {
         if (motionState !== 'granted') {
           callback(false, 'Motion permission denied. Please allow access in Settings → Safari → Motion & Orientation Access.');
           return;
         }
-        // Also request DeviceOrientationEvent if it has requestPermission
         if (typeof DeviceOrientationEvent !== 'undefined' &&
             typeof DeviceOrientationEvent.requestPermission === 'function') {
           return DeviceOrientationEvent.requestPermission();
@@ -218,11 +218,10 @@
         return Promise.resolve('granted');
       })
       .then(orientState => {
-        // orientState may be undefined if we returned early above
         if (orientState !== undefined && orientState !== 'granted') {
-          // Orientation denied but motion was granted — still usable
           console.warn('Orientation permission denied, using motion only.');
         }
+        iosPermissionGranted = true;
         callback(true);
       })
       .catch(err => {
