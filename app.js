@@ -849,26 +849,6 @@
       ctx3d.stroke();
     }
 
-    // Time ramp legend (bottom-right corner)
-    const lgX = W - 12, lgY = H - 10;
-    const lgW = 80, lgH = 6;
-    const grad = ctx3d.createLinearGradient(lgX - lgW, lgY - lgH, lgX, lgY - lgH);
-    grad.addColorStop(0,    '#3b82f6');
-    grad.addColorStop(0.33, '#a855f7');
-    grad.addColorStop(0.66, '#f97316');
-    grad.addColorStop(1,    '#ef4444');
-    ctx3d.fillStyle = grad;
-    ctx3d.beginPath();
-    roundRect(ctx3d, lgX - lgW, lgY - lgH, lgW, lgH, 3);
-    ctx3d.fill();
-
-    ctx3d.fillStyle    = '#94a3b8';
-    ctx3d.font         = '9px -apple-system, sans-serif';
-    ctx3d.textBaseline = 'bottom';
-    ctx3d.textAlign    = 'left';
-    ctx3d.fillText('older', lgX - lgW, lgY - lgH - 1);
-    ctx3d.textAlign    = 'right';
-    ctx3d.fillText('newer', lgX, lgY - lgH - 1);
   }
 
   // ── 3D drag (mouse + touch) ───────────────────
